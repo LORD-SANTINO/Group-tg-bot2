@@ -59,21 +59,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Welcome message
     welcome_msg = """
     👋 *Hi, I'm your Group Helper!* 
-    I can manage your groups to your standards.
+    I am capable of managing your groups to your standards.
     """
 
     # Inline buttons
     keyboard = [
         [
             InlineKeyboardButton("➕ Add me to your group", 
-                                url="https://t.me/YourBotUsername?startgroup=true")
+                                url="https://t.me/grphelper_bot?startgroup=true")
         ],
         [
             InlineKeyboardButton("📊 My groups", callback_data="my_groups"),
             InlineKeyboardButton("❓ Help", callback_data="help")
         ],
         [
-            InlineKeyboardButton("🆘 Support", url="https://t.me/YourChannel")
+            InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
