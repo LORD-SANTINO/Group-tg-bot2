@@ -284,6 +284,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
+async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle feature toggle callbacks"""
+    query = update.callback_query
+    await query.answer()
+    
+    if not await is_group_admin(update, context):
+        await query.edit_message_text("🚫 Admin only!")
+        return
+    
+    action, group_id = query.data.split("_", 1)
+    group_id = int(group_id)
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    if action == "toggle":
+        feature = context.args[0]
+        cursor.execute("""
+            UPDATE group_features 
+            SET is_active = NOT is_active 
+            WHERE group_id = ? AND feature = ?
+        """, (group_id, feature))
+        conn.commit()
+    
+    conn.close()
+    await button_handler(update, context)  # Refresh the menu
+
 # --- Rules Management ---
 async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_group_admin(update, context):
