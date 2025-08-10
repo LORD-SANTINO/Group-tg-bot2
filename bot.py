@@ -227,6 +227,50 @@ async def userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(response, parse_mode="Markdown")
 
+async def mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mute a user (restrict all permissions)"""
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("🚫 Admin only!")
+        return
+
+    try:
+        user_id = int(context.args[0])
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=user_id,
+            permissions=ChatPermissions(
+                can_send_messages=False,
+                can_send_media_messages=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False
+            )
+        )
+        await update.message.reply_text(f"🔇 Muted user: `{user_id}`", parse_mode="Markdown")
+    except (IndexError, ValueError):
+        await update.message.reply_text("ℹ️ Usage: `/mute <user_id>` or reply with `/mute`", parse_mode="Markdown")
+
+async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unmute a user (restore default permissions)"""
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("🚫 Admin only!")
+        return
+
+    try:
+        user_id = int(context.args[0])
+        await context.bot.restrict_chat_member(
+            chat_id=update.effective_chat.id,
+            user_id=user_id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True
+            )
+        )
+        await update.message.reply_text(f"🔊 Unmuted user: `{user_id}`", parse_mode="Markdown")
+    except (IndexError, ValueError):
+        await update.message.reply_text("ℹ️ Usage: `/unmute <user_id>` or reply with `/unmute`", parse_mode="Markdown")
+
 # --- Main ---
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
@@ -241,6 +285,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("ban", ban_user))
     app.add_handler(CommandHandler("warn", warn_user))
     app.add_handler(CommandHandler("userinfo", userinfo))
+    app.add_handler(CommandHandler("mute", mute_user))
+    app.add_handler(CommandHandler("unmute", unmute_user))
 
     # Anti-spam
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
