@@ -1,2 +1,3 @@
-faqs.db
-__pycache__
+group_bot.db
+__pycache__/
+.env
