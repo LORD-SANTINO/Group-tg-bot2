@@ -9,6 +9,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from datetime import datetime, timedelta
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -55,7 +56,81 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 # --- Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🤖 Group Admin Bot active! Use /help")
+    # Welcome message
+    welcome_msg = """
+    👋 *Hi, I'm your Group Helper!* 
+    I can manage your groups to your standards.
+    """
+
+    # Inline buttons
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Add me to your group", 
+                                url="https://t.me/YourBotUsername?startgroup=true")
+        ],
+        [
+            InlineKeyboardButton("📊 My groups", callback_data="my_groups"),
+            InlineKeyboardButton("❓ Help", callback_data="help")
+        ],
+        [
+            InlineKeyboardButton("🆘 Support", url="https://t.me/YourChannel")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        welcome_msg,
+        parse_mode="Markdown",
+        reply_markup=reply_markup
+    )
+
+# Callback handler for buttons
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "my_groups":
+        # Fetch groups (pseudo-code - needs actual implementation)
+        groups = ["Group A", "Group B"]  # Replace with real data
+        group_buttons = [
+            [InlineKeyboardButton(f"{group} ⚙️", callback_data=f"settings_{group}")]
+            for group in groups
+        ]
+        reply_markup = InlineKeyboardMarkup(group_buttons)
+        await query.edit_message_text(
+            f"📋 *Your Groups* ({len(groups)}):",
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+
+    elif query.data == "help":
+        help_msg = """
+        🤖 *Bot Capabilities*:
+        - Auto-ban spammers
+        - FAQ system (`/addfaq`, `/faq`)
+        - Rules management (`/setrules`)
+        - Admin tools (`/ban`, `/mute`)
+        """
+        await query.edit_message_text(
+            help_msg,
+            parse_mode="Markdown"
+        )
+
+    elif query.data.startswith("settings_"):
+        group_name = query.data.split("_", 1)[1]
+        # Toggle buttons for settings
+        toggle_buttons = [
+            [
+                InlineKeyboardButton("🔈 Mute New Members", callback_data=f"toggle_mute_{group_name}"),
+                InlineKeyboardButton("🚫 Anti-Spam", callback_data=f"toggle_spam_{group_name}")
+            ],
+            [InlineKeyboardButton("🔙 Back", callback_data="my_groups")]
+        ]
+        await query.edit_message_text(
+            f"⚙️ *Settings for {group_name}*:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(toggle_buttons)
+        )
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
@@ -329,6 +404,8 @@ if __name__ == "__main__":
 
     # Anti-spam
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
+
+    app.add_handler(CallbackQueryHandler(button_handler))
 
     print("Bot is running...")
     app.run_polling()
