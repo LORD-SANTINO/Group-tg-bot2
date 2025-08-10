@@ -150,16 +150,20 @@ async def get_faq(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Moderation ---
 async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_group_admin(update, context):
-        await update.message.reply_text("🚫 *Admin only!*", parse_mode="Markdown")
+        await update.message.reply_text("🚫 Admin only!")
+        return
+
+    if not context.args:
+        await update.message.reply_text("ℹ️ Usage: `/ban <user_id>` or reply to a message with `/ban`", parse_mode="Markdown")
         return
 
     try:
         user_id = int(context.args[0])
         await context.bot.ban_chat_member(update.effective_chat.id, user_id)
-        await update.message.reply_text(f"🔨 Banned user: {user_id}")
-    except (IndexError, ValueError):
-        await update.message.reply_text("ℹ️ Usage: /ban <user_id>")
-
+        await update.message.reply_text(f"🔨 Banned user: `{user_id}`", parse_mode="Markdown")
+    except ValueError:
+        await update.message.reply_text("❌ Invalid ID. Use `/userinfo @username` to get the ID.")
+        
 async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_group_admin(update, context):
         await update.message.reply_text("🚫 *Admin only!*", parse_mode="Markdown")
@@ -183,6 +187,46 @@ async def anti_spam(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🚨 Banned {update.effective_user.name} for spam."
         )
 
+async def userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("🚫 Admin only!")
+        return
+
+    # Check if user replied to a message or tagged someone
+    target_user = None
+    if update.message.reply_to_message:
+        target_user = update.message.reply_to_message.from_user
+    elif context.args:
+        try:
+            # Extract user ID from mention (e.g., @username)
+            mention = context.args[0].strip("@")
+            if mention.isdigit():  # Direct ID provided
+                target_user = await context.bot.get_chat_member(update.effective_chat.id, int(mention))
+                target_user = target_user.user
+            else:
+                # Search by username (Note: Works only if user has interacted in the group)
+                chat_members = await context.bot.get_chat_members(update.effective_chat.id)
+                for member in chat_members:
+                    if member.user.username and member.user.username.lower() == mention.lower():
+                        target_user = member.user
+                        break
+        except Exception as e:
+            print(f"Error fetching user: {e}")
+
+    if not target_user:
+        await update.message.reply_text("❌ User not found. Reply to their message or tag them (@username).")
+        return
+
+    # Send user details
+    response = (
+        f"👤 *User Info*\n"
+        f"Name: `{target_user.full_name}`\n"
+        f"Username: `@{target_user.username}`\n"
+        f"ID: `{target_user.id}`\n\n"
+        f"⚠️ *Pro Tip*: Use `/ban {target_user.id}`"
+    )
+    await update.message.reply_text(response, parse_mode="Markdown")
+
 # --- Main ---
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
@@ -196,6 +240,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("faq", get_faq))
     app.add_handler(CommandHandler("ban", ban_user))
     app.add_handler(CommandHandler("warn", warn_user))
+    app.add_handler(CommandHandler("userinfo", userinfo))
 
     # Anti-spam
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
