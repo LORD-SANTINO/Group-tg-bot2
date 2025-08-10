@@ -8,6 +8,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from datetime import datetime, timedelta
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -228,26 +229,64 @@ async def userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(response, parse_mode="Markdown")
 
 async def mute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mute a user (restrict all permissions)"""
     if not await is_group_admin(update, context):
         await update.message.reply_text("🚫 Admin only!")
         return
 
     try:
+        # Parse arguments
         user_id = int(context.args[0])
+        duration = None
+        
+        # Check for duration (e.g., "30m", "2h", "1d")
+        if len(context.args) > 1:
+            time_unit = context.args[1][-1].lower()
+            time_value = int(context.args[1][:-1])
+            
+            if time_unit == 'm':  # Minutes
+                duration = timedelta(minutes=time_value)
+            elif time_unit == 'h':  # Hours
+                duration = timedelta(hours=time_value)
+            elif time_unit == 'd':  # Days
+                duration = timedelta(days=time_value)
+        
+        # Apply mute
+        permissions = ChatPermissions(
+            can_send_messages=False,
+            can_send_media_messages=False,
+            can_send_other_messages=False,
+            can_add_web_page_previews=False
+        )
+        
+        until_date = datetime.now() + duration if duration else None
         await context.bot.restrict_chat_member(
             chat_id=update.effective_chat.id,
             user_id=user_id,
-            permissions=ChatPermissions(
-                can_send_messages=False,
-                can_send_media_messages=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False
-            )
+            permissions=permissions,
+            until_date=until_date
         )
-        await update.message.reply_text(f"🔇 Muted user: `{user_id}`", parse_mode="Markdown")
-    except (IndexError, ValueError):
-        await update.message.reply_text("ℹ️ Usage: `/mute <user_id>` or reply with `/mute`", parse_mode="Markdown")
+        
+        # Confirmation message
+        if duration:
+            await update.message.reply_text(
+                f"⏳ Muted user `{user_id}` for {context.args[1]}",
+                parse_mode="Markdown"
+            )
+        else:
+            await update.message.reply_text(
+                f"🔇 Permanently muted user `{user_id}`",
+                parse_mode="Markdown"
+            )
+            
+    except (IndexError, ValueError, AttributeError):
+        await update.message.reply_text(
+            "ℹ️ Usage:\n"
+            "• `/mute <user_id>` - Permanent mute\n"
+            "• `/mute <user_id> 30m` - 30 minutes\n"
+            "• `/mute <user_id> 2h` - 2 hours\n"
+            "• `/mute <user_id> 1d` - 1 day",
+            parse_mode="Markdown"
+        )
 
 async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Unmute a user (restore default permissions)"""
