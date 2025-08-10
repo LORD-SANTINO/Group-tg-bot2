@@ -228,62 +228,6 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "my_groups":
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT group_id, title FROM tracked_groups 
-            WHERE owner_id = ?
-        """, (query.from_user.id,))
-        
-        groups = cursor.fetchall()
-        conn.close()
-        
-        if not groups:
-            await query.edit_message_text("❌ You haven't added me to any groups yet!")
-            return
-            
-        buttons = [
-            [InlineKeyboardButton(
-                f"{title} {'✅' if get_group_features(gid)['anti_spam'] else '❌'}",
-                callback_data=f"group_{gid}"
-            )]
-            for gid, title in groups
-        ]
-        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="start_menu")])
-        
-        await query.edit_message_text(
-            f"📊 Your Groups ({len(groups)}):",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-    
-    elif query.data.startswith("group_"):
-        group_id = int(query.data.split("_")[1])
-        features = get_group_features(group_id)
-        
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    f"{'🔴' if features['mute_new_members'] else '🟢'} Mute New",
-                    callback_data=f"toggle_mute_{group_id}"
-                ),
-                InlineKeyboardButton(
-                    f"{'🔴' if not features['anti_spam'] else '🟢'} Anti-Spam",
-                    callback_data=f"toggle_spam_{group_id}"
-                )
-            ],
-            [InlineKeyboardButton("🔙 Back", callback_data="my_groups")]
-        ]
-        
-        await query.edit_message_text(
-            f"⚙️ Settings for Group {group_id}:",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle feature toggle callbacks"""
     query = update.callback_query
