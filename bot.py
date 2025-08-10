@@ -21,26 +21,79 @@ SPAM_TRIGGERS = ["badword", "http://", "spam.com"]  # Customize this list
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    # FAQs table
+    
+    # Group tracking tables
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tracked_groups (
+            group_id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            owner_id INTEGER NOT NULL,
+            date_added TEXT NOT NULL,
+            member_count INTEGER DEFAULT 0
+        )
+    """)
+    
+    # Group settings with toggle states
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS group_features (
+            group_id INTEGER,
+            feature TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            PRIMARY KEY (group_id, feature)
+        )
+    """)
+    
+    # Default features for new groups
+    cursor.execute("""
+        INSERT OR IGNORE INTO group_features (group_id, feature, is_active)
+        VALUES 
+            (0, 'welcome_message', 1),
+            (0, 'anti_spam', 1),
+            (0, 'mute_new_members', 0)
+    """)
+    
+    # Keep your existing tables
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faqs (
             chat_id INTEGER,
             question TEXT,
             answer TEXT,
             PRIMARY KEY (chat_id, question)
-        )
     """)
-    # Group rules table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS group_rules (
-            chat_id INTEGER PRIMARY KEY,
-            rules_text TEXT
-        )
-    """)
+    
     conn.commit()
     conn.close()
 
 init_db()
+
+def track_new_group(chat_id: int, title: str, owner_id: int):
+    """Record when bot joins a new group"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        INSERT OR REPLACE INTO tracked_groups 
+        (group_id, title, owner_id, date_added) 
+        VALUES (?, ?, ?, ?)
+    """, (chat_id, title, owner_id, datetime.now().isoformat()))
+    
+    # Activate default features
+    cursor.execute("""
+        INSERT INTO group_features (group_id, feature, is_active)
+        SELECT ?, feature, is_active FROM group_features WHERE group_id = 0
+    """, (chat_id,))
+    
+    conn.commit()
+    conn.close()
+
+def get_group_features(group_id: int) -> dict:
+    """Get all active features for a group"""
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT feature, is_active FROM group_features WHERE group_id = ?
+    """, (group_id,))
+    return {row[0]: bool(row[1]) for row in cursor.fetchall()}
 
 # --- Helper Functions ---
 async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None) -> bool:
@@ -57,6 +110,14 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 # --- Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Track group if not private chat
+    if update.effective_chat.type != "private":
+        track_new_group(
+            update.effective_chat.id,
+            update.effective_chat.title,
+            update.effective_user.id
+        )
+        
     # Welcome message
     welcome_msg = """
     👋 *Hi, I'm your Group Helper!* 
@@ -91,48 +152,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     if query.data == "my_groups":
-        # Fetch groups (pseudo-code - needs actual implementation)
-        groups = ["Group A", "Group B"]  # Replace with real data
-        group_buttons = [
-            [InlineKeyboardButton(f"{group} ⚙️", callback_data=f"settings_{group}")]
-            for group in groups
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT group_id, title FROM tracked_groups 
+            WHERE owner_id = ?
+        """, (query.from_user.id,))
+        
+        groups = cursor.fetchall()
+        conn.close()
+        
+        if not groups:
+            await query.edit_message_text("❌ You haven't added me to any groups yet!")
+            return
+            
+        buttons = [
+            [InlineKeyboardButton(
+                f"{title} {'✅' if get_group_features(gid)['anti_spam'] else '❌'}",
+                callback_data=f"group_{gid}"
+            )]
+            for gid, title in groups
         ]
-        reply_markup = InlineKeyboardMarkup(group_buttons)
+        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="start_menu")])
+        
         await query.edit_message_text(
-            f"📋 *Your Groups* ({len(groups)}):",
-            parse_mode="Markdown",
-            reply_markup=reply_markup
+            f"📊 Your Groups ({len(groups)}):",
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
-
-    elif query.data == "help":
-        help_msg = """
-        🤖 *Bot Capabilities*:
-        - Auto-ban spammers
-        - FAQ system (`/addfaq`, `/faq`)
-        - Rules management (`/setrules`)
-        - Admin tools (`/ban`, `/mute`)
-        """
-        await query.edit_message_text(
-            help_msg,
-            parse_mode="Markdown"
-        )
-
-    elif query.data.startswith("settings_"):
-        group_name = query.data.split("_", 1)[1]
-        # Toggle buttons for settings
-        toggle_buttons = [
+    
+    elif query.data.startswith("group_"):
+        group_id = int(query.data.split("_")[1])
+        features = get_group_features(group_id)
+        
+        buttons = [
             [
-                InlineKeyboardButton("🔈 Mute New Members", callback_data=f"toggle_mute_{group_name}"),
-                InlineKeyboardButton("🚫 Anti-Spam", callback_data=f"toggle_spam_{group_name}")
+                InlineKeyboardButton(
+                    f"{'🔴' if features['mute_new_members'] else '🟢'} Mute New",
+                    callback_data=f"toggle_mute_{group_id}"
+                ),
+                InlineKeyboardButton(
+                    f"{'🔴' if not features['anti_spam'] else '🟢'} Anti-Spam",
+                    callback_data=f"toggle_spam_{group_id}"
+                )
             ],
             [InlineKeyboardButton("🔙 Back", callback_data="my_groups")]
         ]
+        
         await query.edit_message_text(
-            f"⚙️ *Settings for {group_name}*:",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(toggle_buttons)
+            f"⚙️ Settings for Group {group_id}:",
+            reply_markup=InlineKeyboardMarkup(buttons)
         )
-
+    
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
     🛠️ *Commands*:
@@ -147,6 +217,62 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     /warn <user_id> - Warn a user
     """
     await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "my_groups":
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT group_id, title FROM tracked_groups 
+            WHERE owner_id = ?
+        """, (query.from_user.id,))
+        
+        groups = cursor.fetchall()
+        conn.close()
+        
+        if not groups:
+            await query.edit_message_text("❌ You haven't added me to any groups yet!")
+            return
+            
+        buttons = [
+            [InlineKeyboardButton(
+                f"{title} {'✅' if get_group_features(gid)['anti_spam'] else '❌'}",
+                callback_data=f"group_{gid}"
+            )]
+            for gid, title in groups
+        ]
+        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="start_menu")])
+        
+        await query.edit_message_text(
+            f"📊 Your Groups ({len(groups)}):",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+    
+    elif query.data.startswith("group_"):
+        group_id = int(query.data.split("_")[1])
+        features = get_group_features(group_id)
+        
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    f"{'🔴' if features['mute_new_members'] else '🟢'} Mute New",
+                    callback_data=f"toggle_mute_{group_id}"
+                ),
+                InlineKeyboardButton(
+                    f"{'🔴' if not features['anti_spam'] else '🟢'} Anti-Spam",
+                    callback_data=f"toggle_spam_{group_id}"
+                )
+            ],
+            [InlineKeyboardButton("🔙 Back", callback_data="my_groups")]
+        ]
+        
+        await query.edit_message_text(
+            f"⚙️ Settings for Group {group_id}:",
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
 
 # --- Rules Management ---
 async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -388,6 +514,8 @@ async def unmute_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Main ---
 if __name__ == "__main__":
+    init_db()
+    
     app = ApplicationBuilder().token(TOKEN).build()
 
     # Commands
@@ -407,6 +535,8 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
 
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CallbackQueryHandler(toggle_feature, pattern="^toggle_"))
+    
 
     print("Bot is running...")
     app.run_polling()
