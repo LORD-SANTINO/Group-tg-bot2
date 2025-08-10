@@ -183,7 +183,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )]
             for gid, title in groups
         ]
-        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="start_menu")])
+        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_to_start")])
         
         await query.edit_message_text(
             f"📊 Your Groups ({len(groups)}):",
