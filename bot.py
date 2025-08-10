@@ -22,7 +22,7 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Group tracking tables
+    # Group tracking table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tracked_groups (
             group_id INTEGER PRIMARY KEY,
@@ -33,32 +33,42 @@ def init_db():
         )
     """)
     
-    # Group settings with toggle states
+    # Group features table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_features (
             group_id INTEGER,
             feature TEXT NOT NULL,
             is_active BOOLEAN DEFAULT 1,
-            PRIMARY KEY (group_id, feature)
+            PRIMARY KEY (group_id, feature),
+            FOREIGN KEY (group_id) REFERENCES tracked_groups(group_id)
         )
     """)
     
-    # Default features for new groups
-    cursor.execute("""
-        INSERT OR IGNORE INTO group_features (group_id, feature, is_active)
-        VALUES 
-            (0, 'welcome_message', 1),
-            (0, 'anti_spam', 1),
-            (0, 'mute_new_members', 0)
-    """)
-    
-    # Keep your existing tables
+    # FAQs table (keep your existing but fixed syntax)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faqs (
             chat_id INTEGER,
             question TEXT,
             answer TEXT,
             PRIMARY KEY (chat_id, question)
+        )
+    """)
+    
+    # Group rules table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS group_rules (
+            chat_id INTEGER PRIMARY KEY,
+            rules_text TEXT
+        )
+    """)
+    
+    # Insert default features if not exists
+    cursor.execute("""
+        INSERT OR IGNORE INTO group_features (group_id, feature, is_active)
+        VALUES 
+            (0, 'welcome_message', 1),
+            (0, 'anti_spam', 1),
+            (0, 'mute_new_members', 0)
     """)
     
     conn.commit()
