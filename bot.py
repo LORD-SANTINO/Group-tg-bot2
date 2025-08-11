@@ -209,15 +209,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 HELP_MESSAGE, 
                 parse_mode="Markdown"
-
-        if query.data == "show_games":
-        await show_games_menu(update, context)
-        
+            )  # This parenthesis was missing
+            
+        elif query.data == "show_games":
+            await show_games_menu(update, context)
+            
         elif query.data == "back_to_main":
-        await start(update, context)
-            )
+            await start(update, context)
+            
         elif query.data.startswith("toggle_"):
             await toggle_feature(update, context)
+            
         else:
             await query.edit_message_text("❌ Unknown command")
 
