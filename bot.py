@@ -151,18 +151,44 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         return False
         
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
+        track_new_group(
+            update.effective_chat.id,
+            update.effective_chat.title,
+            update.effective_user.id
+        )
+    
+    # Simple Markdown message without complex formatting
+    welcome_msg = """
+    👋 *Hi, I'm your Group Helper Bot!*
+    
+    *Main Commands:*
+    /help - Show all commands
+    /rules - Group rules
+    /games - Fun games
+    
+    Need help?"""
+
     keyboard = [
-        [InlineKeyboardButton("🎮 Play Games", callback_data="show_games")],
-        [InlineKeyboardButton("➕ Add to Group", url="https://t.me/your_bot?startgroup=true"),
-         InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
+        [InlineKeyboardButton("➕ Add to Group", 
+                            url="https://t.me/your_bot?startgroup=true")],
+        [InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
     ]
     
-    await update.message.reply_text(
-        f"""🤖 *Bot Commands*\n\n{HELP_MESSAGE}""",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        disable_web_page_preview=True
-)
+    try:
+        await update.message.reply_text(
+            welcome_msg,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            disable_web_page_preview=True
+        )
+    except Exception as e:
+        print(f"Error sending start message: {e}")
+        # Fallback without Markdown if formatting fails
+        await update.message.reply_text(
+            "👋 Hi! I'm your Group Helper Bot!\nUse /help for commands.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 # Make sure HELP_MESSAGE contains all commands you want to show
 HELP_MESSAGE = """
