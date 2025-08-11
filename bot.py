@@ -2,11 +2,14 @@ import os
 import sqlite3
 import asyncio
 import time
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
+import random
+import json
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions, Poll
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    PollAnswerHandler,
     CallbackQueryHandler,
     filters,
     ContextTypes,
@@ -22,6 +25,18 @@ SPAM_TRIGGERS = [
     "badword", "spam", "advertise",
     "earn money", "make money fast",
     "bit.ly", "goo.gl" 
+]
+QUESTIONS = [
+    {
+        "question": "Would you rather...\nA) Have unlimited battery but no internet\nB) Have unlimited internet but 1 hour battery?",
+        "options": ["Option A", "Option B", "Skip"],
+        "correct": random.randint(0, 1)
+    },
+    {
+        "question": "Would you rather...\nA) Always say what you're thinking\nB) Never speak again?",
+        "options": ["Option A", "Option B", "Skip"],
+        "correct": random.randint(0, 1)
+    }
 ]
 
 # Help message constant
@@ -54,6 +69,7 @@ HELP_MESSAGE = """
 # --- Database Setup ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect('wcg.db')
     cursor = conn.cursor()
     
     cursor.execute("""
@@ -108,7 +124,27 @@ def init_db():
             (0, 'anti_spam', 1),
             (0, 'mute_new_members', 0)
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS players (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            wins INTEGER DEFAULT 0,
+            games_played INTEGER DEFAULT 0,
+            last_played TEXT
+        )
+    """)
     
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS games (
+            poll_id TEXT PRIMARY KEY,
+            chat_id INTEGER,
+            question TEXT,
+            correct_option INTEGER,
+            participants TEXT,
+            created_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -347,6 +383,182 @@ async def truth_or_dare(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Dare: Send a voice message singing for 30 seconds!"
     ]
     await update.message.reply_text(random.choice(questions))
+
+async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start a new Would You Rather game"""
+    if not context.args:
+        await update.message.reply_text("Usage: /wcg @user1 @user2")
+        return
+
+    participants = {
+        "ids": [update.effective_user.id],
+        "names": [update.effective_user.username or str(update.effective_user.id)]
+    }
+
+    # Get mentioned users
+    for entity in update.message.entities:
+        if entity.type == "mention":
+            username = update.message.text[entity.offset+1:entity.offset+entity.length]
+            try:
+                user = await context.bot.get_chat_member(update.effective_chat.id, username)
+                participants["ids"].append(user.user.id)
+                participants["names"].append(user.user.username or str(user.user.id))
+            except:
+                continue
+
+    if len(participants["ids"]) < 2:
+        await update.message.reply_text("Need at least 2 players!")
+        return
+
+    # Select random question
+    question = random.choice(QUESTIONS)
+    poll = await context.bot.send_poll(
+        chat_id=update.effective_chat.id,
+        question=question["question"],
+        options=question["options"],
+        is_anonymous=False,
+        allows_multiple_answers=False,
+        correct_option_id=question["correct"],
+        explanation="See results with /wcg_results"
+    )
+
+    # Store game in database
+    conn = sqlite3.connect('wcg.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO games VALUES (?, ?, ?, ?, ?, ?)""",
+        (
+            poll.poll.id,
+            update.effective_chat.id,
+            question["question"],
+            question["correct"],
+            json.dumps(participants),
+            datetime.now().isoformat()
+        )
+    )
+    conn.commit()
+    conn.close()
+
+async def handle_vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track when users vote in polls"""
+    poll_answer = update.poll_answer
+    conn = sqlite3.connect('wcg.db')
+    cursor = conn.cursor()
+    
+    # Check if this is a WCG poll
+    cursor.execute("SELECT * FROM games WHERE poll_id = ?", (poll_answer.poll_id,))
+    game = cursor.fetchone()
+    
+    if game:
+        # Update player stats
+        cursor.execute(
+            """INSERT OR IGNORE INTO players 
+            (user_id, username, last_played) 
+            VALUES (?, ?, ?)""",
+            (
+                poll_answer.user.id,
+                poll_answer.user.username or str(poll_answer.user.id),
+                datetime.now().isoformat()
+            )
+        )
+        cursor.execute(
+            """UPDATE players 
+            SET games_played = games_played + 1 
+            WHERE user_id = ?""",
+            (poll_answer.user.id,)
+        )
+        conn.commit()
+    conn.close()
+
+async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display results of the last game"""
+    conn = sqlite3.connect('wcg.db')
+    cursor = conn.cursor()
+    
+    # Get most recent game
+    cursor.execute(
+        """SELECT * FROM games 
+        WHERE chat_id = ? 
+        ORDER BY created_at DESC LIMIT 1""",
+        (update.effective_chat.id,)
+    )
+    game = cursor.fetchone()
+    
+    if not game:
+        await update.message.reply_text("No recent game found!")
+        return
+    
+    poll_id, chat_id, question, correct_option, participants, created_at = game
+    participants = json.loads(participants)
+    
+    try:
+        poll = await context.bot.stop_poll(chat_id, poll_id)
+    except:
+        await update.message.reply_text("Couldn't retrieve poll results")
+        return
+    
+    # Calculate winners
+    winners = []
+    if poll.options[correct_option].voter_count > 0:
+        for user_id in poll.options[correct_option].voter_ids:
+            # Update win count
+            cursor.execute(
+                """UPDATE players 
+                SET wins = wins + 1 
+                WHERE user_id = ?""",
+                (user_id,)
+            )
+            # Find username
+            cursor.execute(
+                "SELECT username FROM players WHERE user_id = ?",
+                (user_id,)
+            )
+            username = cursor.fetchone()[0]
+            winners.append(f"@{username}" if "@" not in username else username)
+    
+    conn.commit()
+    
+    # Prepare results message
+    result_msg = (
+        f"🏆 *WCG Results* 🏆\n\n"
+        f"Question: {question}\n"
+        f"Correct answer: {poll.options[correct_option].text}\n\n"
+    )
+    
+    if winners:
+        result_msg += f"Winners: {', '.join(winners)}\n\n"
+    else:
+        result_msg += "No winners this round!\n\n"
+    
+    await update.message.reply_text(result_msg, parse_mode="Markdown")
+    conn.close()
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show top players"""
+    conn = sqlite3.connect('wcg.db')
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """SELECT username, wins, games_played 
+        FROM players 
+        ORDER BY wins DESC 
+        LIMIT 10"""
+    )
+    top_players = cursor.fetchall()
+    
+    if not top_players:
+        await update.message.reply_text("No players yet!")
+        return
+    
+    leaderboard_msg = "🏆 *WCG Leaderboard* 🏆\n\n"
+    for i, (username, wins, games) in enumerate(top_players, 1):
+        win_rate = (wins/games)*100 if games > 0 else 0
+        leaderboard_msg += (
+            f"{i}. {username}: {wins} wins ({win_rate:.1f}% win rate)\n"
+        )
+    
+    await update.message.reply_text(leaderboard_msg, parse_mode="Markdown")
+    conn.close()
 
 # --- Rules Management ---
 async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -696,6 +908,11 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("truthordare", truth_or_dare))
     app.add_handler(CommandHandler("meme", ...))
     app.add_handler(CommandHandler("games", games_command))  # Make sure this exists
+    app.add_handler(CommandHandler("wcg", start_wcg))
+    app.add_handler(CommandHandler("wcg_results", show_results))
+    app.add_handler(CommandHandler("wcg_leaderboard", leaderboard))
+    
+    app.add_handler(PollAnswerHandler(handle_vote))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
 
