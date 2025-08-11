@@ -61,9 +61,10 @@ HELP_MESSAGE = """
 /kickall - Kick all non-admin members (with confirmation)
 
 *Game Commands*:
-/truthordare @username - Start game
-/meme @username - Share memes
-/joke @username - Tell jokes
+/truthordare - Start game
+/meme - Share memes
+/joke  - Tell jokes
+/wcg
 """
 
 # --- Database Setup ---
