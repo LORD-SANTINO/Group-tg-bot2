@@ -54,6 +54,16 @@ def init_db():
         )
     """)
     
+    # Add this to your existing table creation
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS anti_spam_settings (
+            group_id INTEGER PRIMARY KEY,
+            is_active BOOLEAN DEFAULT 1,
+            ban_instead_of_delete BOOLEAN DEFAULT 1,
+            max_warnings INTEGER DEFAULT 3
+        )
+    """)
+    
     # Group rules table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_rules (
@@ -361,15 +371,85 @@ async def warn_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Anti-Spam ---
 async def anti_spam(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if any(trigger in update.message.text.lower() for trigger in SPAM_TRIGGERS):
-        await update.message.delete()
-        await context.bot.ban_chat_member(
-            update.effective_chat.id,
-            update.effective_user.id
-        )
-        await update.message.reply_text(
-            f"🚨 Banned {update.effective_user.name} for spam."
-        )
+    if update.effective_chat.type == "private":
+        return
+    
+    # Get group settings
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT is_active, ban_instead_of_delete 
+        FROM anti_spam_settings 
+        WHERE group_id = ?
+    """, (update.effective_chat.id,))
+    
+    settings = cursor.fetchone()
+    conn.close()
+    
+    # Skip if anti-spam is disabled
+    if not settings or not settings[0]:
+        return
+    
+    # Check for spam triggers
+    message_text = update.message.text.lower() if update.message.text else ""
+    is_spam = any(trigger in message_text for trigger in SPAM_TRIGGERS)
+    
+    if is_spam:
+        try:
+            await update.message.delete()
+            
+            if settings[1]:  # ban_instead_of_delete
+                await context.bot.ban_chat_member(
+                    chat_id=update.effective_chat.id,
+                    user_id=update.effective_user.id
+                )
+                action = "banned"
+            else:
+                action = "message deleted"
+                
+            admin_notice = (
+                f"🚨 Anti-Spam Action:\n"
+                f"User: {update.effective_user.mention_markdown()}\n"
+                f"Action: {action}\n"
+                f"Content: {message_text[:100]}..."
+            )
+            
+            # Send notice to admins (optional)
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=admin_notice,
+                parse_mode="Markdown"
+            )
+            
+        except Exception as e:
+            print(f"Anti-spam error: {e}")
+
+async def toggle_antispam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("🚫 Admin only!")
+        return
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    # Toggle the setting
+    cursor.execute("""
+        INSERT OR REPLACE INTO anti_spam_settings 
+        (group_id, is_active) 
+        VALUES (?, COALESCE((SELECT NOT is_active FROM anti_spam_settings WHERE group_id = ?), 1))
+    """, (update.effective_chat.id, update.effective_chat.id))
+    
+    conn.commit()
+    
+    # Get new status
+    cursor.execute("""
+        SELECT is_active FROM anti_spam_settings WHERE group_id = ?
+    """, (update.effective_chat.id,))
+    is_active = cursor.fetchone()[0]
+    conn.close()
+    
+    status = "✅ enabled" if is_active else "❌ disabled"
+    await update.message.reply_text(f"Anti-spam is now {status}")
 
 async def userinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_group_admin(update, context):
