@@ -227,8 +227,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("➕ Add to Group", 
-                            url="https://t.me/your_bot?startgroup=true")],
-        [InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
+                            url="https://t.me/grphelper_bot?startgroup=true")],
+        [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel01")]
     ]
     
     try:
@@ -254,6 +254,8 @@ HELP_MESSAGE = """
 /start - Start the bot
 /help - Show this help
 /rules - Show group rules
+/games
+/faq
 
 🛡️ Group - Admin Commands:
 /setrules <text> - Set group rules
@@ -390,27 +392,45 @@ async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Usage: /wcg @user1 @user2")
         return
 
+    # Initialize participants with the command sender
     participants = {
         "ids": [update.effective_user.id],
-        "names": [update.effective_user.username or str(update.effective_user.id)]
+        "names": [update.effective_user.first_name]
     }
 
-    # Get mentioned users
+    # Get mentioned users properly
     for entity in update.message.entities:
         if entity.type == "mention":
-            username = update.message.text[entity.offset+1:entity.offset+entity.length]
+            # Extract the text mention (including @)
+            mention_text = update.message.text[entity.offset:entity.offset+entity.length]
+            
             try:
-                user = await context.bot.get_chat_member(update.effective_chat.id, username)
-                participants["ids"].append(user.user.id)
-                participants["names"].append(user.user.username or str(user.user.id))
-            except:
+                # Get user ID from the message (works for recent messages)
+                if update.message.reply_to_message:
+                    for user in update.message.reply_to_message.new_chat_members:
+                        participants["ids"].append(user.id)
+                        participants["names"].append(user.first_name)
+                else:
+                    # Alternative method to get user ID from mention
+                    member = await context.bot.get_chat_member(
+                        update.effective_chat.id,
+                        mention_text[1:]  # Remove @ symbol
+                    )
+                    participants["ids"].append(member.user.id)
+                    participants["names"].append(member.user.first_name)
+            except Exception as e:
+                print(f"Error processing mention {mention_text}: {e}")
                 continue
 
+    # Verify we have enough players
     if len(participants["ids"]) < 2:
-        await update.message.reply_text("Need at least 2 players!")
+        await update.message.reply_text(
+            "❌ Need at least 2 players! Make sure you mentioned valid users.\n"
+            "Example: /wcg @username1 @username2"
+        )
         return
 
-    # Select random question
+    # Rest of your game starting logic...
     question = random.choice(QUESTIONS)
     poll = await context.bot.send_poll(
         chat_id=update.effective_chat.id,
