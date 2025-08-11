@@ -44,15 +44,12 @@ HELP_MESSAGE = """
 /antispam - Toggle anti-spam system
 /kickall - Kick all non-admin members (with confirmation)
 
-# Add this to your HELP_MESSAGE
 GAME_COMMANDS = """
-*Game Commands* (Pair Required):
+*Game Commands*:
 /truthordare @username - Start game
 /meme @username - Share memes
 /joke @username - Tell jokes
 """
-app.add_handler(CommandHandler("truthordare", truth_or_dare))
-app.add_handler(CommandHandler("meme", ...))
 
 # --- Database Setup ---
 def init_db():
