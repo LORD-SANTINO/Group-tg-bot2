@@ -306,6 +306,19 @@ async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await button_handler(update, context)  # Refresh the menu
 
+async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Truth or Dare", callback_data="game_truthordare")],
+        [InlineKeyboardButton("Meme Battle", callback_data="game_memebattle")],
+        [InlineKeyboardButton("Back", callback_data="back_to_main")]
+    ]
+    
+    await update.message.reply_text(
+        "🎮 *Available Games*\nSelect one:",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
 async def show_games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
