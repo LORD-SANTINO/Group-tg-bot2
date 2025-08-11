@@ -182,21 +182,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "show_commands":
         await query.edit_message_text(HELP_MESSAGE, parse_mode="Markdown")
 
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-    🛠️ *Commands*:
-    /help - Show this
-    /rules - Show group rules
-    /faq <question> - Get an answer
-    
-    ⚡ *Admin Commands*:
-    /setrules <text> - Set group rules
-    /addfaq <question> | <answer> - Add FAQ
-    /ban <user_id> - Ban a user
-    /warn <user_id> - Warn a user
-    """
-    await update.message.reply_text(help_text, parse_mode="Markdown")
-
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle feature toggle callbacks"""
     query = update.callback_query
@@ -557,7 +542,7 @@ if __name__ == "__main__":
 
     # Commands
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("rules", show_rules))
     app.add_handler(CommandHandler("setrules", set_rules))
     app.add_handler(CommandHandler("addfaq", add_faq))
