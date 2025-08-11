@@ -147,30 +147,43 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 # --- Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Track group if not private chat
     if update.effective_chat.type != "private":
         track_new_group(
             update.effective_chat.id,
             update.effective_chat.title,
             update.effective_user.id
         )
-        
-    welcome_msg = """
-    👋 *Hi, I'm your Group Helper!* 
-    I am capable of managing your groups to your standards.
-    """
-
+    
+    # Create inline keyboard with just two URL buttons
     keyboard = [
-        [InlineKeyboardButton("➕ Add me to your group", 
-                            url="https://t.me/grphelper_bot?startgroup=true")],
-        [InlineKeyboardButton("📜 Commands", callback_data="help_commands")],  # Changed to "help_commands"
-        [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")]
+        [InlineKeyboardButton("➕ Add to Group", url="https://t.me/your_bot?startgroup=true")],
+        [InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
     ]
     
+    # Send message with commands and buttons
     await update.message.reply_text(
-        welcome_msg,
+        f"""🤖 *Bot Commands*\n\n{HELP_MESSAGE}""",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
     )
+
+# Make sure HELP_MESSAGE contains all commands you want to show
+HELP_MESSAGE = """
+📜 *Available Commands:*
+
+👤 User Commands:
+/start - Start the bot
+/help - Show this help
+/rules - Show group rules
+
+🛡️ Admin Commands:
+/ban - Ban a user
+/kick - Kick a user
+/mute - Mute a user
+/warn - Warn a user
+"""
     
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode="Markdown")
