@@ -43,7 +43,16 @@ HELP_MESSAGE = """
 /userinfo @username - Get user information
 /antispam - Toggle anti-spam system
 /kickall - Kick all non-admin members (with confirmation)
+
+# Add this to your HELP_MESSAGE
+GAME_COMMANDS = """
+🎮 *Game Commands* (Pair Required):
+/truthordare @username - Start game
+/meme @username - Share memes
+/joke @username - Tell jokes
 """
+app.add_handler(CommandHandler("truthordare", truth_or_dare))
+app.add_handler(CommandHandler("meme", ...))
 
 # --- Database Setup ---
 def init_db():
@@ -144,30 +153,20 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         return member.status in ["administrator", "creator"]
     except Exception:
         return False
-
-# --- Commands ---
+        
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Track group if not private chat
-    if update.effective_chat.type != "private":
-        track_new_group(
-            update.effective_chat.id,
-            update.effective_chat.title,
-            update.effective_user.id
-        )
-    
-    # Create inline keyboard with just two URL buttons
     keyboard = [
-        [InlineKeyboardButton("➕ Add to Group", url="https://t.me/your_bot?startgroup=true")],
-        [InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
+        [InlineKeyboardButton("🎮 Play Games", callback_data="show_games")],
+        [InlineKeyboardButton("➕ Add to Group", url="https://t.me/your_bot?startgroup=true"),
+         InlineKeyboardButton("🆘 Support", url="https://t.me/your_support")]
     ]
     
-    # Send message with commands and buttons
     await update.message.reply_text(
         f"""🤖 *Bot Commands*\n\n{HELP_MESSAGE}""",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_markup=InlineKeyboardMarkup(keyboard)
         disable_web_page_preview=True
-    )
+)
 
 # Make sure HELP_MESSAGE contains all commands you want to show
 HELP_MESSAGE = """
@@ -196,6 +195,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
+    
+    if query.data == "show_games":
+        await show_games_menu(update, context)
+    elif query.data == "back_to_main":
+        await start(update, context)
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     
     try:
         # Always answer callback query first (shows "loading" state)
@@ -205,6 +213,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 HELP_MESSAGE, 
                 parse_mode="Markdown"
+
+        if query.data == "show_games":
+        await show_games_menu(update, context)
+        
+        elif query.data == "back_to_main":
+        await start(update, context)
             )
         elif query.data.startswith("toggle_"):
             await toggle_feature(update, context)
@@ -247,6 +261,35 @@ async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn.close()
     await button_handler(update, context)  # Refresh the menu
+
+async def show_games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    game_keyboard = [
+        [InlineKeyboardButton("Truth or Dare", switch_inline_query_current_chat="/truthordare ")],
+        [InlineKeyboardButton("Meme Battle", switch_inline_query_current_chat="/meme ")],
+        [InlineKeyboardButton("Joke Contest", switch_inline_query_current_chat="/joke ")],
+        [InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]
+    ]
+    
+    await query.edit_message_text(
+        text="🎮 *Select a Game*\n\nYou'll need to tag someone to play!",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(game_keyboard)
+    )
+
+async def truth_or_dare(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 1:
+        await update.message.reply_text("Please tag someone: /truthordare @username")
+        return
+    
+    # Game logic here
+    questions = [
+        "Truth: What's your most embarrassing moment?",
+        "Dare: Send a voice message singing for 30 seconds!"
+    ]
+    await update.message.reply_text(random.choice(questions))
 
 # --- Rules Management ---
 async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -593,6 +636,8 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("unmute", unmute_user))
     app.add_handler(CommandHandler("antispam", toggle_antispam))
     app.add_handler(CommandHandler("kick", kick_user))
+    app.add_handler(CommandHandler("truthordare", truth_or_dare))
+    app.add_handler(CommandHandler("meme", ...))
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
 
