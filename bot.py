@@ -652,7 +652,6 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="⚠️ Mass kick initiated! Non-admin members will be removed."
         )
 
-    try:
         kicked_count = 0
         # Use getChatAdministrators to get non-admin members
         admins = await context.bot.get_chat_administrators(update.effective_chat.id)
