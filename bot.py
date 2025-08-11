@@ -1,6 +1,4 @@
 import os
-import asyncio
-import time
 import sqlite3
 from telegram import Update
 from telegram.ext import CallbackQueryHandler
@@ -604,98 +602,6 @@ async def kick_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (IndexError, ValueError):
         await update.message.reply_text("ℹ️ Usage: /kick <user_id>")
 
-async def kickall_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send confirmation before kicking all members"""
-    if not await is_group_admin(update, context):
-        await update.message.reply_text("🚫 Admin only!")
-        return
-
-    keyboard = [
-        [InlineKeyboardButton("✅ Yes, I'm sure", callback_data="kickall_confirm")],
-        [InlineKeyboardButton("❌ Cancel", callback_data="kickall_cancel")]
-    ]
-    
-    await update.message.reply_text(
-        "⚠️ Are you sure you want to kick ALL members?\n"
-        "Reply with: 'Yes I am sure' or press the button below",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Actually kick all members (except admins)"""
-    query = update.callback_query
-    if query:
-        await query.answer()
-    
-    if not await is_group_admin(update, context):
-        await (query.edit_message_text if query else update.message.reply_text)("🚫 Admin only!")
-        return
-
-    # Send warning
-    warning = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="⚠️ Mass kick initiated! Non-admin members will be removed."
-    )
-
-    try:
-        kicked_count = 0
-        # Get all admins first
-        admins = await context.bot.get_chat_administrators(update.effective_chat.id)
-        admin_ids = [admin.user.id for admin in admins]
-        
-        # Get total member count
-        total_members = await context.bot.get_chat_member_count(update.effective_chat.id)
-        
-        # Process in batches
-        limit = 100
-        offset = 0
-        while offset < total_members:
-            # Get batch of members
-            members = await context.bot.get_chat_members(
-                chat_id=update.effective_chat.id,
-                offset=offset,
-                limit=limit
-            )
-            
-            for member in members:
-                user = member.user
-                if (user.id not in admin_ids 
-                    and not user.is_bot
-                    and member.status != ChatMemberStatus.OWNER):
-                    try:
-                        await context.bot.ban_chat_member(
-                            chat_id=update.effective_chat.id,
-                            user_id=user.id,
-                            until_date=int(time.time()) + 60  # 60 second ban (kick)
-                        )
-                        kicked_count += 1
-                        await asyncio.sleep(0.3)  # Rate limiting
-                    except Exception as e:
-                        print(f"Couldn't kick {user.id}: {e}")
-            
-            offset += limit
-            await asyncio.sleep(1)  # Brief pause between batches
-
-        await warning.edit_text(f"👢 Successfully kicked {kicked_count} members")
-        
-    except Exception as e:
-        await (query.edit_message_text if query else update.message.reply_text)(
-            f"❌ Error: {str(e)}"
-        )
-    finally:
-        try:
-            await warning.unpin()
-        except:
-            pass
-
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text confirmations"""
-    if (update.message and update.message.reply_to_message and 
-        "Are you sure you want to kick ALL members" in update.message.reply_to_message.text and
-        "yes i am sure" in update.message.text.lower()):
-        
-        await kickall_execute(update, context)
-
 # --- Main ---
 if __name__ == "__main__":
     init_db()
@@ -716,9 +622,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("unmute", unmute_user))
     app.add_handler(CommandHandler("antispam", toggle_antispam))
     app.add_handler(CommandHandler("kick", kick_user))
-    app.add_handler(CommandHandler("kickall", kickall_confirmation))
     
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
 
     app.add_handler(CallbackQueryHandler(button_handler))
