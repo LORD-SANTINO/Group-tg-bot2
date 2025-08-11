@@ -13,6 +13,7 @@ from telegram.ext import (
 )
 from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatMemberStatus
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -627,63 +628,64 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
     
     if not await is_group_admin(update, context):
-        if query:
-            await query.edit_message_text("🚫 Admin only!")
-        else:
-            await update.message.reply_text("🚫 Admin only!")
+        await (query.edit_message_text if query else update.message.reply_text)("🚫 Admin only!")
         return
-    
-    # Check text confirmation or button press
-    text_confirmation = (update.message and update.message.text and 
-                        "yes i am sure" in update.message.text.lower())
-    button_confirmation = (query and query.data == "kickall_confirm")
-    
-    if not (text_confirmation or button_confirmation):
-        if query:
-            await query.edit_message_text("Kickall cancelled")
-        else:
-            await update.message.reply_text("Kickall cancelled")
-        return
+
+    # Send warning
+    warning = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="⚠️ Mass kick initiated! Non-admin members will be removed."
+    )
 
     try:
-        # Send warning message FIRST
-        warning_msg = await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="⚠️ Mass kick initiated! Non-admin members will be removed."
-        )
-
         kicked_count = 0
-        # Use getChatAdministrators to get non-admin members
+        # Get all admins first (using new method)
         admins = await context.bot.get_chat_administrators(update.effective_chat.id)
         admin_ids = [admin.user.id for admin in admins]
         
-        # Get all chat members (new method)
-        async for member in context.bot.get_chat_members(chat_id=update.effective_chat.id):
-            # Don't kick admins or bots
-            if member.user.id not in admin_ids and not member.user.is_bot:
-                try:
-                    await context.bot.ban_chat_member(
-                        chat_id=update.effective_chat.id,
-                        user_id=member.user.id,
-                        until_date=int(time.time()) + 60  # 60 second ban (kick)
-                    )
-                    kicked_count += 1
-                    # Small delay to avoid flood limits
-                    await asyncio.sleep(0.5)
-                except Exception as e:
-                    print(f"Couldn't kick {member.user.id}: {e}")
-        
-        if query:
-            await query.edit_message_text(f"👢 Successfully kicked {kicked_count} members")
-        else:
-            await update.message.reply_text(f"👢 Successfully kicked {kicked_count} members")
+        # NEW: Proper way to get members in v20+
+        async with context.bot._bot as bot:
+            member_count = await bot.get_chat_member_count(update.effective_chat.id)
+            
+            # Batch process to avoid timeouts
+            limit = 100
+            offset = 0
+            while offset < member_count:
+                members = await bot.get_chat_members(
+                    chat_id=update.effective_chat.id,
+                    offset=offset,
+                    limit=limit
+                )
+                
+                for member in members:
+                    user = member.user
+                    if (user.id not in admin_ids 
+                        and not user.is_bot
+                        and member.status != ChatMemberStatus.OWNER):
+                        try:
+                            await bot.ban_chat_member(
+                                chat_id=update.effective_chat.id,
+                                user_id=user.id,
+                                until_date=int(time.time()) + 60
+                            )
+                            kicked_count += 1
+                            await asyncio.sleep(0.3)  # Rate limiting
+                        except Exception as e:
+                            print(f"Couldn't kick {user.id}: {e}")
+                
+                offset += limit
+
+        await warning.edit_text(f"👢 Successfully kicked {kicked_count} members")
         
     except Exception as e:
-        error_msg = f"❌ Error: {str(e)}"
-        if query:
-            await query.edit_message_text(error_msg)
-        else:
-            await update.message.reply_text(error_msg)
+        await (query.edit_message_text if query else update.message.reply_text)(
+            f"❌ Error: {str(e)}"
+        )
+    finally:
+        try:
+            await warning.unpin()
+        except:
+            pass
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text confirmations"""
