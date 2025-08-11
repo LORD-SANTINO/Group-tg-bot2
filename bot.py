@@ -621,10 +621,14 @@ async def kickall_confirmation(update: Update, context: ContextTypes.DEFAULT_TYP
 async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Actually kick all members (except admins)"""
     query = update.callback_query
-    await query.answer()
+    if query:
+        await query.answer()
     
     if not await is_group_admin(update, context):
-        await query.edit_message_text("🚫 Admin only!")
+        if query:
+            await query.edit_message_text("🚫 Admin only!")
+        else:
+            await update.message.reply_text("🚫 Admin only!")
         return
     
     # Check text confirmation or button press
@@ -633,14 +637,22 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
     button_confirmation = (query and query.data == "kickall_confirm")
     
     if not (text_confirmation or button_confirmation):
-        await update.message.reply_text("Kickall cancelled")
+        if query:
+            await query.edit_message_text("Kickall cancelled")
+        else:
+            await update.message.reply_text("Kickall cancelled")
         return
     
     try:
         kicked_count = 0
-        async for member in context.bot.get_chat_members(update.effective_chat.id):
+        # Use getChatAdministrators to get non-admin members
+        admins = await context.bot.get_chat_administrators(update.effective_chat.id)
+        admin_ids = [admin.user.id for admin in admins]
+        
+        # Get all chat members (new method)
+        async for member in context.bot.get_chat_members(chat_id=update.effective_chat.id):
             # Don't kick admins or bots
-            if member.status not in ["administrator", "creator"] and not member.user.is_bot:
+            if member.user.id not in admin_ids and not member.user.is_bot:
                 try:
                     await context.bot.ban_chat_member(
                         chat_id=update.effective_chat.id,
@@ -648,13 +660,22 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         until_date=int(time.time()) + 60  # 60 second ban (kick)
                     )
                     kicked_count += 1
+                    # Small delay to avoid flood limits
+                    await asyncio.sleep(0.5)
                 except Exception as e:
                     print(f"Couldn't kick {member.user.id}: {e}")
         
-        await query.edit_message_text(f"👢 Successfully kicked {kicked_count} members")
+        if query:
+            await query.edit_message_text(f"👢 Successfully kicked {kicked_count} members")
+        else:
+            await update.message.reply_text(f"👢 Successfully kicked {kicked_count} members")
         
     except Exception as e:
-        await query.edit_message_text(f"❌ Error: {str(e)}")
+        error_msg = f"❌ Error: {str(e)}"
+        if query:
+            await query.edit_message_text(error_msg)
+        else:
+            await update.message.reply_text(error_msg)
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle text confirmations"""
