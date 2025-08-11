@@ -30,6 +30,7 @@ HELP_MESSAGE = """
 /start - Show the bot introduction
 /help - Show this message
 /rules - Show group rules
+/games - Show available games
 /faq <question> - Get an answer
 
 ⚡ *Admin Commands*:
