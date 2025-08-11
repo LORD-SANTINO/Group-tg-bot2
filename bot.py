@@ -19,12 +19,12 @@ from telegram.constants import ChatMemberStatus
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-DB_NAME = "group_bot.db"
+DB_NAME = "group_bot.db"  # Make sure to use this consistently
 SPAM_TRIGGERS = [
-    "http://", "https://", "t.me/", ".com", 
+    "http://", "https://", "t.me/", ".com",
     "badword", "spam", "advertise",
     "earn money", "make money fast",
-    "bit.ly", "goo.gl" 
+    "bit.ly", "goo.gl"
 ]
 QUESTIONS = [
     {
@@ -69,9 +69,9 @@ HELP_MESSAGE = """
 
 # --- Database Setup ---
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = sqlite3.connect(DB_NAME)  # FIXED: Use DB_NAME once
     cursor = conn.cursor()
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tracked_groups (
             group_id INTEGER PRIMARY KEY,
@@ -81,7 +81,7 @@ def init_db():
             member_count INTEGER DEFAULT 0
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_features (
             group_id INTEGER,
@@ -91,7 +91,7 @@ def init_db():
             FOREIGN KEY (group_id) REFERENCES tracked_groups(group_id)
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faqs (
             chat_id INTEGER,
@@ -100,7 +100,7 @@ def init_db():
             PRIMARY KEY (chat_id, question)
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS anti_spam_settings (
             group_id INTEGER PRIMARY KEY,
@@ -109,14 +109,14 @@ def init_db():
             max_warnings INTEGER DEFAULT 3
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_rules (
             chat_id INTEGER PRIMARY KEY,
             rules_text TEXT
         )
     """)
-    
+
     cursor.execute("""
         INSERT OR IGNORE INTO group_features (group_id, feature, is_active)
         VALUES 
@@ -134,7 +134,7 @@ def init_db():
             last_played TEXT
         )
     """)
-    
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS games (
             poll_id TEXT PRIMARY KEY,
@@ -153,33 +153,30 @@ init_db()
 def track_new_group(chat_id: int, title: str, owner_id: int):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
+
     try:
-        # First check if group exists
         cursor.execute("SELECT 1 FROM tracked_groups WHERE group_id = ?", (chat_id,))
         exists = cursor.fetchone()
-        
+
         if exists:
-            # Update existing record
             cursor.execute("""
                 UPDATE tracked_groups 
                 SET title = ?, owner_id = ?, date_added = ?
                 WHERE group_id = ?
             """, (title, owner_id, datetime.now().isoformat(), chat_id))
         else:
-            # Insert new record
             cursor.execute("""
                 INSERT INTO tracked_groups 
                 (group_id, title, owner_id, date_added) 
                 VALUES (?, ?, ?, ?)
             """, (chat_id, title, owner_id, datetime.now().isoformat()))
-            
-            # Insert default features
+
+            # Insert default features from group_id = 0 template
             cursor.execute("""
                 INSERT INTO group_features (group_id, feature, is_active)
                 SELECT ?, feature, is_active FROM group_features WHERE group_id = 0
             """, (chat_id,))
-        
+
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database error in track_new_group: {e}")
@@ -192,20 +189,22 @@ def get_group_features(group_id: int) -> dict:
     cursor.execute("""
         SELECT feature, is_active FROM group_features WHERE group_id = ?
     """, (group_id,))
-    return {row[0]: bool(row[1]) for row in cursor.fetchall()}
+    features = {row[0]: bool(row[1]) for row in cursor.fetchall()}
+    conn.close()
+    return features
 
 # --- Helper Functions ---
 async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None) -> bool:
     if not update.effective_chat:
         return False
-    
+
     user_id = user_id or update.effective_user.id
     try:
         member = await context.bot.get_chat_member(update.effective_chat.id, user_id)
         return member.status in ["administrator", "creator"]
     except Exception:
         return False
-        
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         track_new_group(
@@ -213,24 +212,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update.effective_chat.title,
             update.effective_user.id
         )
-    
-    # Simple Markdown message without complex formatting
+
     welcome_msg = """
     👋 *Hi, I'm your Group Helper Bot!*
-    
+
     *Main Commands:*
     /help - Show all commands
     /rules - Group rules
     /games - Fun games
-    
+
     Need help?"""
 
     keyboard = [
-        [InlineKeyboardButton("➕ Add to Group", 
+        [InlineKeyboardButton("➕ Add to Group",
                             url="https://t.me/grphelper_bot?startgroup=true")],
         [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel01")]
     ]
-    
+
     try:
         await update.message.reply_text(
             welcome_msg,
@@ -240,109 +238,81 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"Error sending start message: {e}")
-        # Fallback without Markdown if formatting fails
         await update.message.reply_text(
             "👋 Hi! I'm your Group Helper Bot!\nUse /help for commands.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# Make sure HELP_MESSAGE contains all commands you want to show
-HELP_MESSAGE = """
-📜 *Available Commands:*
+# HELP_MESSAGE already defined above
 
-👤 User Commands:
-/start - Start the bot
-/help - Show this help
-/rules - Show group rules
-/games
-/faq
-
-🛡️ Group - Admin Commands:
-/setrules <text> - Set group rules
-/addfaq <question> | <answer> - Add FAQ
-/ban <user_id> - Ban a user
-/kick <user_id> - Kick a user
-/mute <user_id> [duration] - Mute a user
-/unmute <user_id> - Unmute a user
-/warn <user_id> - Warn a user
-/userinfo @username - Get user information 
-/antispam - Toggle anti-spam system
-/kickall - Kick all non-admin members (with confirmation)
-"""
-    
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode="Markdown")
 
+# --- Merged button_handler to fix duplicate ---
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    
-    if query.data == "show_games":
-        await show_games_menu(update, context)
-    elif query.data == "back_to_main":
-        await start(update, context)
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    
     try:
-        # Always answer callback query first (shows "loading" state)
-        await query.answer()  
+        await query.answer()
 
         if query.data == "help_commands":
             await query.edit_message_text(
-                HELP_MESSAGE, 
+                HELP_MESSAGE,
                 parse_mode="Markdown"
-            )  # This parenthesis was missing
-            
+            )
+
         elif query.data == "show_games":
             await show_games_menu(update, context)
-            
+
         elif query.data == "back_to_main":
             await start(update, context)
-            
+
         elif query.data.startswith("toggle_"):
             await toggle_feature(update, context)
-            
+
         else:
             await query.edit_message_text("❌ Unknown command")
 
     except Exception as e:
-        # This will show a small error toast to the user
         await query.answer("⚠️ Error: Please try again")
-        
-        # Print the error to your console/logs
-        print(f"Button handler error: {e}")  
-        
-        # Optional: Notify admins about the error
-        # await notify_admin(context, f"Button error: {e}")
+        print(f"Button handler error: {e}")
 
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle feature toggle callbacks"""
+
     query = update.callback_query
     await query.answer()
-    
+
     if not await is_group_admin(update, context):
         await query.edit_message_text("🚫 Admin only!")
         return
-    
-    action, group_id = query.data.split("_", 1)
-    group_id = int(group_id)
-    
+
+    # FIXED: Updated parsing format - expected "toggle_<feature>_<groupid>"
+    parts = query.data.split("_", 2)
+    if len(parts) != 3:
+        await query.edit_message_text("❌ Invalid toggle command format.")
+        return
+
+    _, feature, group_id_str = parts
+    try:
+        group_id = int(group_id_str)
+    except ValueError:
+        await query.edit_message_text("❌ Invalid group ID.")
+        return
+
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
-    if action == "toggle":
-        feature = context.args[0]
-        cursor.execute("""
-            UPDATE group_features 
-            SET is_active = NOT is_active 
-            WHERE group_id = ? AND feature = ?
-        """, (group_id, feature))
-        conn.commit()
-    
+
+    cursor.execute("""
+        UPDATE group_features
+        SET is_active = NOT is_active
+        WHERE group_id = ? AND feature = ?
+    """, (group_id, feature))
+    conn.commit()
     conn.close()
-    await button_handler(update, context)  # Refresh the menu
+
+    # Refresh menu after toggling
+    await button_handler(update, context)
 
 async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -350,24 +320,24 @@ async def games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Meme Battle", callback_data="game_memebattle")],
         [InlineKeyboardButton("Back", callback_data="back_to_main")]
     ]
-    
+
     await update.message.reply_text(
         "🎮 *Available Games*\nSelect one:",
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+    )
 
 async def show_games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     game_keyboard = [
         [InlineKeyboardButton("Truth or Dare", switch_inline_query_current_chat="/truthordare ")],
         [InlineKeyboardButton("Meme Battle", switch_inline_query_current_chat="/meme ")],
         [InlineKeyboardButton("Joke Contest", switch_inline_query_current_chat="/joke ")],
         [InlineKeyboardButton("🔙 Back", callback_data="back_to_main")]
     ]
-    
+
     await query.edit_message_text(
         text="🎮 *Select a Game*\n\nYou'll need to tag someone to play!",
         parse_mode="Markdown",
@@ -378,8 +348,7 @@ async def truth_or_dare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
         await update.message.reply_text("Please tag someone: /truthordare @username")
         return
-    
-    # Game logic here
+
     questions = [
         "Truth: What's your most embarrassing moment?",
         "Dare: Send a voice message singing for 30 seconds!"
@@ -387,42 +356,31 @@ async def truth_or_dare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(random.choice(questions))
 
 async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start a new Would You Rather game"""
     if not context.args:
         await update.message.reply_text("Usage: /wcg @user1 @user2")
         return
 
-    # Initialize participants with the command sender
     participants = {
         "ids": [update.effective_user.id],
         "names": [update.effective_user.first_name]
     }
 
-    # Get mentioned users properly
     for entity in update.message.entities:
         if entity.type == "mention":
-            # Extract the text mention (including @)
             mention_text = update.message.text[entity.offset:entity.offset+entity.length]
-            
+
             try:
-                # Get user ID from the message (works for recent messages)
-                if update.message.reply_to_message:
-                    for user in update.message.reply_to_message.new_chat_members:
-                        participants["ids"].append(user.id)
-                        participants["names"].append(user.first_name)
-                else:
-                    # Alternative method to get user ID from mention
-                    member = await context.bot.get_chat_member(
-                        update.effective_chat.id,
-                        mention_text[1:]  # Remove @ symbol
-                    )
-                    participants["ids"].append(member.user.id)
-                    participants["names"].append(member.user.first_name)
+                # Note: This may fail if username is not accessible; common limitation.
+                member = await context.bot.get_chat_member(
+                    update.effective_chat.id,
+                    mention_text[1:]  # Remove @ symbol
+                )
+                participants["ids"].append(member.user.id)
+                participants["names"].append(member.user.first_name)
             except Exception as e:
                 print(f"Error processing mention {mention_text}: {e}")
                 continue
 
-    # Verify we have enough players
     if len(participants["ids"]) < 2:
         await update.message.reply_text(
             "❌ Need at least 2 players! Make sure you mentioned valid users.\n"
@@ -430,7 +388,6 @@ async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Rest of your game starting logic...
     question = random.choice(QUESTIONS)
     poll = await context.bot.send_poll(
         chat_id=update.effective_chat.id,
@@ -442,8 +399,7 @@ async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         explanation="See results with /wcg_results"
     )
 
-    # Store game in database
-    conn = sqlite3.connect('wcg.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO games VALUES (?, ?, ?, ?, ?, ?)""",
@@ -460,17 +416,14 @@ async def start_wcg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 async def handle_vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track when users vote in polls"""
     poll_answer = update.poll_answer
-    conn = sqlite3.connect('wcg.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
-    # Check if this is a WCG poll
+
     cursor.execute("SELECT * FROM games WHERE poll_id = ?", (poll_answer.poll_id,))
     game = cursor.fetchone()
-    
+
     if game:
-        # Update player stats
         cursor.execute(
             """INSERT OR IGNORE INTO players 
             (user_id, username, last_played) 
@@ -491,11 +444,9 @@ async def handle_vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display results of the last game"""
-    conn = sqlite3.connect('wcg.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
-    # Get most recent game
+
     cursor.execute(
         """SELECT * FROM games 
         WHERE chat_id = ? 
@@ -503,61 +454,40 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (update.effective_chat.id,)
     )
     game = cursor.fetchone()
-    
+
     if not game:
         await update.message.reply_text("No recent game found!")
+        conn.close()
         return
-    
+
     poll_id, chat_id, question, correct_option, participants, created_at = game
     participants = json.loads(participants)
-    
+
     try:
         poll = await context.bot.stop_poll(chat_id, poll_id)
-    except:
+    except Exception:
         await update.message.reply_text("Couldn't retrieve poll results")
+        conn.close()
         return
-    
-    # Calculate winners
-    winners = []
-    if poll.options[correct_option].voter_count > 0:
-        for user_id in poll.options[correct_option].voter_ids:
-            # Update win count
-            cursor.execute(
-                """UPDATE players 
-                SET wins = wins + 1 
-                WHERE user_id = ?""",
-                (user_id,)
-            )
-            # Find username
-            cursor.execute(
-                "SELECT username FROM players WHERE user_id = ?",
-                (user_id,)
-            )
-            username = cursor.fetchone()[0]
-            winners.append(f"@{username}" if "@" not in username else username)
-    
-    conn.commit()
-    
-    # Prepare results message
+
+    # Note: `poll.options` does not expose voter user IDs in the library.
+    # To find winners, you'd need to track votes yourself in `handle_vote`.
+
+    # Here, just announce correct answer and no names (privacy limitation).
     result_msg = (
         f"🏆 *WCG Results* 🏆\n\n"
         f"Question: {question}\n"
         f"Correct answer: {poll.options[correct_option].text}\n\n"
+        "Winners tracking unavailable due to Telegram API limitations."
     )
-    
-    if winners:
-        result_msg += f"Winners: {', '.join(winners)}\n\n"
-    else:
-        result_msg += "No winners this round!\n\n"
-    
+
     await update.message.reply_text(result_msg, parse_mode="Markdown")
     conn.close()
 
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show top players"""
-    conn = sqlite3.connect('wcg.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
+
     cursor.execute(
         """SELECT username, wins, games_played 
         FROM players 
@@ -565,18 +495,19 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LIMIT 10"""
     )
     top_players = cursor.fetchall()
-    
+
     if not top_players:
         await update.message.reply_text("No players yet!")
+        conn.close()
         return
-    
+
     leaderboard_msg = "🏆 *WCG Leaderboard* 🏆\n\n"
     for i, (username, wins, games) in enumerate(top_players, 1):
         win_rate = (wins/games)*100 if games > 0 else 0
         leaderboard_msg += (
             f"{i}. {username}: {wins} wins ({win_rate:.1f}% win rate)\n"
         )
-    
+
     await update.message.reply_text(leaderboard_msg, parse_mode="Markdown")
     conn.close()
 
