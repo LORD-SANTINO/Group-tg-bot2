@@ -644,7 +644,14 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Kickall cancelled")
         return
-    
+
+    try:
+        # Send warning message FIRST
+        warning_msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⚠️ Mass kick initiated! Non-admin members will be removed."
+        )
+
     try:
         kicked_count = 0
         # Use getChatAdministrators to get non-admin members
