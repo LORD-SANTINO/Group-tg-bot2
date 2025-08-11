@@ -639,41 +639,42 @@ async def kickall_execute(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         kicked_count = 0
-        # Get all admins first (using new method)
+        # Get all admins first
         admins = await context.bot.get_chat_administrators(update.effective_chat.id)
         admin_ids = [admin.user.id for admin in admins]
         
-        # NEW: Proper way to get members in v20+
-        async with context.bot._bot as bot:
-            member_count = await bot.get_chat_member_count(update.effective_chat.id)
+        # Get total member count
+        total_members = await context.bot.get_chat_member_count(update.effective_chat.id)
+        
+        # Process in batches
+        limit = 100
+        offset = 0
+        while offset < total_members:
+            # Get batch of members
+            members = await context.bot.get_chat_members(
+                chat_id=update.effective_chat.id,
+                offset=offset,
+                limit=limit
+            )
             
-            # Batch process to avoid timeouts
-            limit = 100
-            offset = 0
-            while offset < member_count:
-                members = await bot.get_chat_members(
-                    chat_id=update.effective_chat.id,
-                    offset=offset,
-                    limit=limit
-                )
-                
-                for member in members:
-                    user = member.user
-                    if (user.id not in admin_ids 
-                        and not user.is_bot
-                        and member.status != ChatMemberStatus.OWNER):
-                        try:
-                            await bot.ban_chat_member(
-                                chat_id=update.effective_chat.id,
-                                user_id=user.id,
-                                until_date=int(time.time()) + 60
-                            )
-                            kicked_count += 1
-                            await asyncio.sleep(0.3)  # Rate limiting
-                        except Exception as e:
-                            print(f"Couldn't kick {user.id}: {e}")
-                
-                offset += limit
+            for member in members:
+                user = member.user
+                if (user.id not in admin_ids 
+                    and not user.is_bot
+                    and member.status != ChatMemberStatus.OWNER):
+                    try:
+                        await context.bot.ban_chat_member(
+                            chat_id=update.effective_chat.id,
+                            user_id=user.id,
+                            until_date=int(time.time()) + 60  # 60 second ban (kick)
+                        )
+                        kicked_count += 1
+                        await asyncio.sleep(0.3)  # Rate limiting
+                    except Exception as e:
+                        print(f"Couldn't kick {user.id}: {e}")
+            
+            offset += limit
+            await asyncio.sleep(1)  # Brief pause between batches
 
         await warning.edit_text(f"👢 Successfully kicked {kicked_count} members")
         
