@@ -162,7 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("➕ Add me to your group", 
                             url="https://t.me/grphelper_bot?startgroup=true")],
-        [InlineKeyboardButton("📜 /commands", callback_data="show_commands")],
+        [InlineKeyboardButton("📜 commands", callback_data="commands")],
         [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")]
     ]
     
@@ -179,7 +179,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "show_commands":
+    if query.data == "commands":
         await query.edit_message_text(HELP_MESSAGE, parse_mode="Markdown")
 
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
