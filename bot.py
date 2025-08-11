@@ -681,6 +681,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("kick", kick_user))
     app.add_handler(CommandHandler("truthordare", truth_or_dare))
     app.add_handler(CommandHandler("meme", ...))
+    app.add_handler(CommandHandler("games", games_command))  # Make sure this exists
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
 
