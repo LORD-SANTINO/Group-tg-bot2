@@ -162,7 +162,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("➕ Add me to your group", 
                             url="https://t.me/grphelper_bot?startgroup=true")],
-        [InlineKeyboardButton("📜 commands", callback_data="commands")],
+        [InlineKeyboardButton("📜 Commands", callback_data="help_commands")],  # Changed to "help_commands"
         [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")]
     ]
     
@@ -171,16 +171,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
+    
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(HELP_MESSAGE, parse_mode="Markdown")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Important: Always answer callback queries first
 
-    if query.data == "commands":
+    if query.data == "help_commands":  # Matches the button's callback_data
         await query.edit_message_text(HELP_MESSAGE, parse_mode="Markdown")
+    elif query.data.startswith("toggle_"):
+        await toggle_feature(update, context)
+    else:
+        await query.edit_message_text("❌ Unknown command")  # Fallback
 
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle feature toggle callbacks"""
