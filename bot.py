@@ -46,7 +46,7 @@ HELP_MESSAGE = """
 
 # Add this to your HELP_MESSAGE
 GAME_COMMANDS = """
-🎮 *Game Commands* (Pair Required):
+*Game Commands* (Pair Required):
 /truthordare @username - Start game
 /meme @username - Share memes
 /joke @username - Tell jokes
