@@ -44,7 +44,6 @@ HELP_MESSAGE = """
 /antispam - Toggle anti-spam system
 /kickall - Kick all non-admin members (with confirmation)
 
-GAME_COMMANDS = """
 *Game Commands*:
 /truthordare @username - Start game
 /meme @username - Share memes
