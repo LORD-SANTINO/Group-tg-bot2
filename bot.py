@@ -1,16 +1,17 @@
 import os
 import sqlite3
-from telegram import Update
-from telegram.ext import CallbackQueryHandler
+import asyncio
+import time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     filters,
     ContextTypes,
 )
 from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatMemberStatus
 
 # --- Config ---
@@ -21,14 +22,34 @@ SPAM_TRIGGERS = [
     "badword", "spam", "advertise",
     "earn money", "make money fast",
     "bit.ly", "goo.gl" 
-] 
+]
+
+# Help message constant
+HELP_MESSAGE = """
+🛠️ *Commands*:
+/start - Show the bot introduction
+/help - Show this message
+/rules - Show group rules
+/faq <question> - Get an answer
+
+⚡ *Admin Commands*:
+/setrules <text> - Set group rules
+/addfaq <question> | <answer> - Add FAQ
+/ban <user_id> - Ban a user
+/kick <user_id> - Kick a user
+/mute <user_id> [duration] - Mute a user
+/unmute <user_id> - Unmute a user
+/warn <user_id> - Warn a user
+/userinfo @username - Get user information
+/antispam - Toggle anti-spam system
+/kickall - Kick all non-admin members (with confirmation)
+"""
 
 # --- Database Setup ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Group tracking table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tracked_groups (
             group_id INTEGER PRIMARY KEY,
@@ -39,7 +60,6 @@ def init_db():
         )
     """)
     
-    # Group features table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_features (
             group_id INTEGER,
@@ -50,7 +70,6 @@ def init_db():
         )
     """)
     
-    # FAQs table (keep your existing but fixed syntax)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faqs (
             chat_id INTEGER,
@@ -60,7 +79,6 @@ def init_db():
         )
     """)
     
-    # Add this to your existing table creation
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS anti_spam_settings (
             group_id INTEGER PRIMARY KEY,
@@ -70,7 +88,6 @@ def init_db():
         )
     """)
     
-    # Group rules table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS group_rules (
             chat_id INTEGER PRIMARY KEY,
@@ -78,7 +95,6 @@ def init_db():
         )
     """)
     
-    # Insert default features if not exists
     cursor.execute("""
         INSERT OR IGNORE INTO group_features (group_id, feature, is_active)
         VALUES 
@@ -93,17 +109,14 @@ def init_db():
 init_db()
 
 def track_new_group(chat_id: int, title: str, owner_id: int):
-    """Record when bot joins a new group"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    
     cursor.execute("""
         INSERT OR REPLACE INTO tracked_groups 
         (group_id, title, owner_id, date_added) 
         VALUES (?, ?, ?, ?)
     """, (chat_id, title, owner_id, datetime.now().isoformat()))
     
-    # Activate default features
     cursor.execute("""
         INSERT INTO group_features (group_id, feature, is_active)
         SELECT ?, feature, is_active FROM group_features WHERE group_id = 0
@@ -113,7 +126,6 @@ def track_new_group(chat_id: int, title: str, owner_id: int):
     conn.close()
 
 def get_group_features(group_id: int) -> dict:
-    """Get all active features for a group"""
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("""
@@ -123,7 +135,6 @@ def get_group_features(group_id: int) -> dict:
 
 # --- Helper Functions ---
 async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int = None) -> bool:
-    """Check if user is a group admin."""
     if not update.effective_chat:
         return False
     
@@ -136,7 +147,6 @@ async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 # --- Commands ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Track group if not private chat
     if update.effective_chat.type != "private":
         track_new_group(
             update.effective_chat.id,
@@ -144,91 +154,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update.effective_user.id
         )
         
-    # Welcome message
     welcome_msg = """
     👋 *Hi, I'm your Group Helper!* 
     I am capable of managing your groups to your standards.
     """
 
-    # Inline buttons
     keyboard = [
-        [
-            InlineKeyboardButton("➕ Add me to your group", 
-                                url="https://t.me/grphelper_bot?startgroup=true")
-        ],
-        [
-            InlineKeyboardButton("📊 My groups", callback_data="my_groups"),
-            InlineKeyboardButton("❓ Help", callback_data="help")
-        ],
-        [
-            InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")
-        ]
+        [InlineKeyboardButton("➕ Add me to your group", 
+                            url="https://t.me/grphelper_bot?startgroup=true")],
+        [InlineKeyboardButton("📜 /commands", callback_data="show_commands")],
+        [InlineKeyboardButton("🆘 Support", url="https://t.me/dax_channel")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
+    
     await update.message.reply_text(
         welcome_msg,
         parse_mode="Markdown",
-        reply_markup=reply_markup
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-# Callback handler for buttons
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(HELP_MESSAGE, parse_mode="Markdown")
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    if query.data == "my_groups":
-        conn = sqlite3.connect(DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT group_id, title FROM tracked_groups 
-            WHERE owner_id = ?
-        """, (query.from_user.id,))
-        
-        groups = cursor.fetchall()
-        conn.close()
-        
-        if not groups:
-            await query.edit_message_text("❌ You haven't added me to any groups yet!")
-            return
-            
-        buttons = [
-            [InlineKeyboardButton(
-                f"{title} {'✅' if get_group_features(gid)['anti_spam'] else '❌'}",
-                callback_data=f"group_{gid}"
-            )]
-            for gid, title in groups
-        ]
-        buttons.append([InlineKeyboardButton("🔙 Back", callback_data="back_to_start")])
-        
-        await query.edit_message_text(
-            f"📊 Your Groups ({len(groups)}):",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-    
-    elif query.data.startswith("group_"):
-        group_id = int(query.data.split("_")[1])
-        features = get_group_features(group_id)
-        
-        buttons = [
-            [
-                InlineKeyboardButton(
-                    f"{'🔴' if features['mute_new_members'] else '🟢'} Mute New",
-                    callback_data=f"toggle_mute_{group_id}"
-                ),
-                InlineKeyboardButton(
-                    f"{'🔴' if not features['anti_spam'] else '🟢'} Anti-Spam",
-                    callback_data=f"toggle_spam_{group_id}"
-                )
-            ],
-            [InlineKeyboardButton("🔙 Back", callback_data="my_groups")]
-        ]
-        
-        await query.edit_message_text(
-            f"⚙️ Settings for Group {group_id}:",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-    
+    if query.data == "show_commands":
+        await query.edit_message_text(HELP_MESSAGE, parse_mode="Markdown")
+
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
     🛠️ *Commands*:
