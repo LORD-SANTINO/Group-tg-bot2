@@ -70,7 +70,6 @@ HELP_MESSAGE = """
 # --- Database Setup ---
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    conn = sqlite3.connect('wcg.db')
     cursor = conn.cursor()
     
     cursor.execute("""
