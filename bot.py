@@ -15,7 +15,12 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DB_NAME = "group_bot.db"
-SPAM_TRIGGERS = ["badword", "http://", "spam.com"]  # Customize this list
+SPAM_TRIGGERS = [
+    "http://", "https://", "t.me/", ".com", 
+    "badword", "spam", "advertise",
+    "earn money", "make money fast",
+    "bit.ly", "goo.gl" 
+] 
 
 # --- Database Setup ---
 def init_db():
@@ -591,6 +596,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("userinfo", userinfo))
     app.add_handler(CommandHandler("mute", mute_user))
     app.add_handler(CommandHandler("unmute", unmute_user))
+    app.add_handler(CommandHandler("antispam", toggle_antispam))
 
     # Anti-spam
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, anti_spam))
