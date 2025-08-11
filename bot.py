@@ -116,19 +116,38 @@ init_db()
 def track_new_group(chat_id: int, title: str, owner_id: int):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT OR REPLACE INTO tracked_groups 
-        (group_id, title, owner_id, date_added) 
-        VALUES (?, ?, ?, ?)
-    """, (chat_id, title, owner_id, datetime.now().isoformat()))
     
-    cursor.execute("""
-        INSERT INTO group_features (group_id, feature, is_active)
-        SELECT ?, feature, is_active FROM group_features WHERE group_id = 0
-    """, (chat_id,))
-    
-    conn.commit()
-    conn.close()
+    try:
+        # First check if group exists
+        cursor.execute("SELECT 1 FROM tracked_groups WHERE group_id = ?", (chat_id,))
+        exists = cursor.fetchone()
+        
+        if exists:
+            # Update existing record
+            cursor.execute("""
+                UPDATE tracked_groups 
+                SET title = ?, owner_id = ?, date_added = ?
+                WHERE group_id = ?
+            """, (title, owner_id, datetime.now().isoformat(), chat_id))
+        else:
+            # Insert new record
+            cursor.execute("""
+                INSERT INTO tracked_groups 
+                (group_id, title, owner_id, date_added) 
+                VALUES (?, ?, ?, ?)
+            """, (chat_id, title, owner_id, datetime.now().isoformat()))
+            
+            # Insert default features
+            cursor.execute("""
+                INSERT INTO group_features (group_id, feature, is_active)
+                SELECT ?, feature, is_active FROM group_features WHERE group_id = 0
+            """, (chat_id,))
+        
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error in track_new_group: {e}")
+    finally:
+        conn.close()
 
 def get_group_features(group_id: int) -> dict:
     conn = sqlite3.connect(DB_NAME)
