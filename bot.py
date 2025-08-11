@@ -177,12 +177,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Add these conditions to your existing button handler
-    if query.data == "kickall_confirm":
-        await kickall_execute(update, context)
-    elif query.data == "kickall_cancel":
-        await query.edit_message_text("Kickall cancelled")
-
     if query.data == "my_groups":
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
