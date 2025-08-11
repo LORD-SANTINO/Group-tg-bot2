@@ -178,11 +178,17 @@ HELP_MESSAGE = """
 /help - Show this help
 /rules - Show group rules
 
-🛡️ Admin Commands:
-/ban - Ban a user
-/kick - Kick a user
-/mute - Mute a user
-/warn - Warn a user
+🛡️ Group - Admin Commands:
+/setrules <text> - Set group rules
+/addfaq <question> | <answer> - Add FAQ
+/ban <user_id> - Ban a user
+/kick <user_id> - Kick a user
+/mute <user_id> [duration] - Mute a user
+/unmute <user_id> - Unmute a user
+/warn <user_id> - Warn a user
+/userinfo @username - Get user information 
+/antispam - Toggle anti-spam system
+/kickall - Kick all non-admin members (with confirmation)
 """
     
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
