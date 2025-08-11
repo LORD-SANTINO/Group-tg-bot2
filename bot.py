@@ -177,14 +177,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Important: Always answer callback queries first
+    
+    try:
+        # Always answer callback query first (shows "loading" state)
+        await query.answer()  
 
-    if query.data == "help_commands":  # Matches the button's callback_data
-        await query.edit_message_text(HELP_MESSAGE, parse_mode="Markdown")
-    elif query.data.startswith("toggle_"):
-        await toggle_feature(update, context)
-    else:
-        await query.edit_message_text("❌ Unknown command")  # Fallback
+        if query.data == "help_commands":
+            await query.edit_message_text(
+                HELP_MESSAGE, 
+                parse_mode="Markdown"
+            )
+        elif query.data.startswith("toggle_"):
+            await toggle_feature(update, context)
+        else:
+            await query.edit_message_text("❌ Unknown command")
+
+    except Exception as e:
+        # This will show a small error toast to the user
+        await query.answer("⚠️ Error: Please try again")
+        
+        # Print the error to your console/logs
+        print(f"Button handler error: {e}")  
+        
+        # Optional: Notify admins about the error
+        # await notify_admin(context, f"Button error: {e}")
 
 async def toggle_feature(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle feature toggle callbacks"""
