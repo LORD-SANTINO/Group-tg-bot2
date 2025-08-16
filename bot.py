@@ -514,7 +514,7 @@ async def logo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width = bbox[2] - bbox
     text_height = bbox[11] - bbox[12]
-    text_position = ((size - text_width) // 2xp, size
+    text_position = ((size - text_width) // 2, size
      * 3 // 4)
     draw.text(text_position, text, fill="white", font=font)
     
