@@ -17,7 +17,7 @@ from telegram.ext import (
 )
 from datetime import datetime, timedelta
 from telegram.constants import ChatMemberStatus
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
