@@ -512,8 +512,8 @@ async def logo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     font = ImageFont.load_default()
     text = description[:10]
     bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = bbox[2] - bbox
-    text_height = bbox[11] - bbox[12]
+    text_width = bbox[10] - bbox
+    text_height = bbox[3] - bbox[11]
     text_position = ((size - text_width) // 2, size
      * 3 // 4)
     draw.text(text_position, text, fill="white", font=font)
