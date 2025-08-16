@@ -4,6 +4,7 @@ import asyncio
 import time
 import random
 import json
+import io
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions, Poll
 from telegram.ext import (
     ApplicationBuilder,
@@ -16,6 +17,7 @@ from telegram.ext import (
 )
 from datetime import datetime, timedelta
 from telegram.constants import ChatMemberStatus
+from PIL import Image, ImageDraw
 
 # --- Config ---
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -484,6 +486,36 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(result_msg, parse_mode="Markdown")
     conn.close()
 
+async def logo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Grab user text after /logo command
+    description = ' '.join(context.args) if context.args else "default"
+
+    # For demo: just change circle color based on description text length
+    color = "#0088cc" if len(description) % 2 == 0 else "#00aaff"
+    size = 256
+
+    # Create a Telegram-style logo (circle + paper plane polygon)
+    img = Image.new("RGBA", (size, size), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([(0, 0), (size, size)], fill=color)
+
+    # Paper plane shape
+    plane_points = [
+        (size // 2, size // 4),
+        (size // 4, size * 3 // 4),
+        (size // 2, size // 2),
+        (size * 3 // 4, size * 3 // 4)
+    ]
+    draw.polygon(plane_points, fill="white")
+
+    # Save image to buffer
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+
+    # Send image with caption
+    await update.message.reply_photo(photo=buf, caption=f"Logo generated for: {description}")
+
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -510,6 +542,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(leaderboard_msg, parse_mode="Markdown")
     conn.close()
+
 
 # --- Rules Management ---
 async def set_rules(update: Update, context: ContextTypes.DEFAULT_TYPE):
