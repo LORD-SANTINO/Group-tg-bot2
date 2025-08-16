@@ -895,7 +895,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("wcg", start_wcg))
     app.add_handler(CommandHandler("wcg_results", show_results))
     app.add_handler(CommandHandler("wcg_leaderboard", leaderboard))
-    application.add_handler(CommandHandler("logo", logo_command))
+    app.add_handler(CommandHandler("logo", logo_command))
     
     app.add_handler(PollAnswerHandler(handle_vote))
     
