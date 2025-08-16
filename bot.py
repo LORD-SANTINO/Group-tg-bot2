@@ -487,19 +487,19 @@ async def show_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
 async def logo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Grab user text after /logo command
     description = ' '.join(context.args) if context.args else "default"
-
-    # For demo: just change circle color based on description text length
-    color = "#0088cc" if len(description) % 2 == 0 else "#00aaff"
+    
     size = 256
-
-    # Create a Telegram-style logo (circle + paper plane polygon)
+    # Choose color based on length of description (just an example customization)
+    color = "#0088cc" if len(description) % 2 == 0 else "#00aaff"
+    
     img = Image.new("RGBA", (size, size), (255, 255, 255, 0))
     draw = ImageDraw.Draw(img)
-    draw.ellipse([(0, 0), (size, size)], fill=color)
-
-    # Paper plane shape
+    
+    # Draw colored circle background
+    draw.ellipse([(0,0), (size, size)], fill=color)
+    
+    # Draw white paper plane shape (Telegram-like)
     plane_points = [
         (size // 2, size // 4),
         (size // 4, size * 3 // 4),
@@ -507,15 +507,22 @@ async def logo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (size * 3 // 4, size * 3 // 4)
     ]
     draw.polygon(plane_points, fill="white")
-
-    # Save image to buffer
+    
+    # Add text overlay: first 10 chars of description
+    font = ImageFont.load_default()
+    text = description[:10]
+    text_width, text_height = draw.textsize(text, font=font)
+    text_position = ((size - text_width) // 2, size * 3 // 4)
+    draw.text(text_position, text, fill="white", font=font)
+    
+    # Save to in-memory bytes buffer
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf, format='PNG')
     buf.seek(0)
-
-    # Send image with caption
-    await update.message.reply_photo(photo=buf, caption=f"Logo generated for: {description}")
-
+    
+    # Send photo with caption
+    await update.message.reply_photo(photo=buf, caption=f"Logo for: {description}")
+    
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
